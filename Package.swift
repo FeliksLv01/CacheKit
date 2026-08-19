@@ -10,9 +10,6 @@ let package = Package(
     products: [
         .library(name: "CacheKit", targets: ["CacheKit"]),
     ],
-    dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.11.1"),
-    ],
     targets: [
         .target(
             name: "CacheKitObjC",
@@ -21,11 +18,9 @@ let package = Package(
         ),
         .target(
             name: "CacheKit",
-            dependencies: [
-                "CacheKitObjC",
-                .product(name: "GRDB", package: "GRDB.swift"),
-            ],
-            path: "Sources/CacheKit"
+            dependencies: ["CacheKitObjC"],
+            path: "Sources/CacheKit",
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .testTarget(
             name: "CacheKitTests",

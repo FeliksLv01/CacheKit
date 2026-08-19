@@ -1,20 +1,19 @@
 import Foundation
-import GRDB
 
 final class FileCacheIndexStore {
-    private let databaseQueue: DatabaseQueue
+    private let databaseQueue: SQLiteDatabaseQueue
 
     init(directoryURL: URL) throws {
-        var configuration = Configuration()
+        var configuration = SQLiteConfiguration()
         configuration.prepareDatabase { database in
             try database.execute(sql: "PRAGMA foreign_keys = ON")
         }
-        databaseQueue = try DatabaseQueue(
+        databaseQueue = try SQLiteDatabaseQueue(
             path: directoryURL.appendingPathComponent("cache.sqlite").path,
             configuration: configuration
         )
 
-        var migrator = DatabaseMigrator()
+        var migrator = SQLiteMigrator()
         migrator.registerMigration("createFileCacheIndex") { database in
             try database.execute(sql: """
                 CREATE TABLE cache_entry (
@@ -38,7 +37,7 @@ final class FileCacheIndexStore {
 
     func allEntries() throws -> [FileCacheEntry] {
         try databaseQueue.read { database in
-            try Row.fetchAll(database, sql: """
+            try SQLiteRow.fetchAll(database, sql: """
                 SELECT identifier, file_name, file_size, last_access_at
                 FROM cache_entry
                 """).map(Self.entry(from:))
@@ -104,9 +103,9 @@ final class FileCacheIndexStore {
         }
     }
 
-    private func fetchEntry(database: Database, keys: Set<String>) throws -> FileCacheEntry? {
+    private func fetchEntry(database: SQLiteDatabase, keys: Set<String>) throws -> FileCacheEntry? {
         let placeholders = Array(repeating: "?", count: keys.count).joined(separator: ", ")
-        guard let row = try Row.fetchOne(
+        guard let row = try SQLiteRow.fetchOne(
             database,
             sql: """
                 SELECT entry.identifier, entry.file_name, entry.file_size, entry.last_access_at
@@ -115,14 +114,14 @@ final class FileCacheIndexStore {
                 WHERE alias.cache_key IN (\(placeholders))
                 LIMIT 1
                 """,
-            arguments: StatementArguments(Array(keys))
+            arguments: SQLiteStatementArguments(Array(keys))
         ) else {
             return nil
         }
         return Self.entry(from: row)
     }
 
-    private func upsertAliases(_ keys: Set<String>, identifier: String, database: Database) throws {
+    private func upsertAliases(_ keys: Set<String>, identifier: String, database: SQLiteDatabase) throws {
         for key in keys {
             try database.execute(
                 sql: """
@@ -135,7 +134,7 @@ final class FileCacheIndexStore {
         }
     }
 
-    private static func entry(from row: Row) -> FileCacheEntry {
+    private static func entry(from row: SQLiteRow) -> FileCacheEntry {
         FileCacheEntry(
             identifier: row["identifier"],
             fileName: row["file_name"],

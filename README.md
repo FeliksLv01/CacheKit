@@ -29,9 +29,8 @@ Then add `CacheKit` to the target dependencies.
 pod 'CacheKit', '~> 0.1'
 ```
 
-The runtime library depends on GRDB.swift 7.11.1 through SwiftPM and 6.24.1 through
-CocoaPods (the newest release available on the public CocoaPods trunk). `Cache` and
-`YYCache` are used by the benchmark target only and are not exposed to clients.
+The runtime library has no third-party dependencies. It links the system SQLite library.
+`Cache` and `YYCache` are used by the benchmark target only and are not exposed to clients.
 
 ## Usage
 
@@ -84,7 +83,7 @@ be protected from eviction with `acquireLease` and `releaseLease`.
 ## Design
 
 - Memory LRU uses `os_unfair_lock`, `CFDictionary`, and a doubly linked list.
-- Disk metadata uses SQLite WAL through GRDB `DatabasePool`.
+- Disk metadata uses SQLite WAL through CacheKit's focused internal SQLite layer.
 - Disk values support size, count, and expiration limits.
 - Large values are stored externally while small values remain inline in SQLite.
 - Batch reads use a consistent snapshot; batch writes and removals use one transaction.

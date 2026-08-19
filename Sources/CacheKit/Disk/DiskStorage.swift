@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 
 final class DiskStorage: @unchecked Sendable {
     struct ValueToStore: Sendable {
@@ -39,7 +38,7 @@ final class DiskStorage: @unchecked Sendable {
         let inlineData: Data?
     }
 
-    private let databasePool: DatabasePool
+    private let databasePool: SQLiteDatabasePool
     private let directoryURL: URL
     private let dataDirectoryURL: URL
     private let inlineValueThreshold: Int
@@ -71,14 +70,14 @@ final class DiskStorage: @unchecked Sendable {
         self.now = now
         try fileManager.createDirectory(at: dataDirectoryURL, withIntermediateDirectories: true)
 
-        var databaseConfiguration = Configuration()
+        var databaseConfiguration = SQLiteConfiguration()
         databaseConfiguration.journalMode = .wal
         databaseConfiguration.busyMode = .timeout(1)
         databaseConfiguration.maximumReaderCount = 5
         databaseConfiguration.prepareDatabase { database in
             try database.execute(sql: "PRAGMA synchronous = NORMAL")
         }
-        databasePool = try DatabasePool(
+        databasePool = try SQLiteDatabasePool(
             path: directoryURL.appendingPathComponent("cache.sqlite").path,
             configuration: databaseConfiguration
         )
@@ -389,7 +388,7 @@ final class DiskStorage: @unchecked Sendable {
     }
 
     private func migrate() throws {
-        var migrator = DatabaseMigrator()
+        var migrator = SQLiteMigrator()
         migrator.registerMigration("createUnifiedCache") { database in
             try database.execute(sql: """
                 CREATE TABLE IF NOT EXISTS cache_item (
@@ -406,9 +405,9 @@ final class DiskStorage: @unchecked Sendable {
                 """)
         }
         migrator.registerMigration("addGeneration") { database in
-            try database.alter(table: "cache_item") { table in
-                table.add(column: "generation", .text).notNull().defaults(to: "")
-            }
+            try database.execute(
+                sql: "ALTER TABLE cache_item ADD COLUMN generation TEXT NOT NULL DEFAULT ''"
+            )
         }
         try migrator.migrate(databasePool)
     }
@@ -420,7 +419,7 @@ final class DiskStorage: @unchecked Sendable {
                 FROM cache_item
                 WHERE cache_key = ?
                 """)
-            guard let row = try Row.fetchOne(statement, arguments: [key]) else { return nil }
+            guard let row = try SQLiteRow.fetchOne(statement, arguments: [key]) else { return nil }
             return Item(
                 generation: row["generation"],
                 fileName: row["file_name"],
@@ -443,7 +442,7 @@ final class DiskStorage: @unchecked Sendable {
                     FROM cache_item
                     WHERE cache_key IN (\(placeholders))
                     """)
-                let rows = try Row.fetchAll(statement, arguments: StatementArguments(chunk))
+                let rows = try SQLiteRow.fetchAll(statement, arguments: SQLiteStatementArguments(chunk))
                 for row in rows {
                     let key: String = row["cache_key"]
                     items[key] = Item(
@@ -585,8 +584,7 @@ final class DiskStorage: @unchecked Sendable {
         let expirationTimestamp: TimeInterval?
         do {
             expirationTimestamp = try databasePool.read { database in
-                try TimeInterval.fetchOne(
-                    database,
+                try database.fetchDouble(
                     sql: "SELECT MIN(expires_at) FROM cache_item WHERE expires_at IS NOT NULL"
                 )
             }
@@ -605,7 +603,7 @@ final class DiskStorage: @unchecked Sendable {
         let victims: [Victim]
         do {
             victims = try databasePool.write { database in
-                var victims = try Row.fetchAll(
+                var victims = try SQLiteRow.fetchAll(
                     database,
                     sql: "SELECT cache_key, file_name FROM cache_item WHERE expires_at IS NOT NULL AND expires_at <= ?",
                     arguments: [timestamp]
@@ -618,7 +616,7 @@ final class DiskStorage: @unchecked Sendable {
                     )
                 }
 
-                let totals = try Row.fetchOne(
+                let totals = try SQLiteRow.fetchOne(
                     database,
                     sql: "SELECT COALESCE(SUM(value_size), 0) AS total_size, COUNT(*) AS total_count FROM cache_item"
                 )
@@ -629,7 +627,7 @@ final class DiskStorage: @unchecked Sendable {
                 if exceedsSizeLimit || exceedsCountLimit {
                     var remainingSize = totalSize
                     var remainingCount = totalCount
-                    let rows = try Row.fetchAll(
+                    let rows = try SQLiteRow.fetchAll(
                         database,
                         sql: "SELECT cache_key, file_name, value_size FROM cache_item ORDER BY last_access_at ASC"
                     )
@@ -730,7 +728,7 @@ final class DiskStorage: @unchecked Sendable {
 
     private func loadExternalFileNames() throws -> [String: String] {
         try databasePool.read { database in
-            let rows = try Row.fetchAll(
+            let rows = try SQLiteRow.fetchAll(
                 database,
                 sql: "SELECT cache_key, file_name FROM cache_item WHERE file_name IS NOT NULL"
             )

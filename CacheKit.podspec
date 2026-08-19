@@ -17,7 +17,7 @@ Pod::Spec.new do |spec|
     'Sources/CacheKit/**/*.swift',
     'Sources/CacheKitObjC/**/*.{h,m}',
   ]
-  spec.dependency 'GRDB.swift', '6.24.1'
+  spec.libraries = 'sqlite3'
 
   spec.test_spec 'Tests' do |tests|
     tests.source_files = 'Tests/**/*.swift'
