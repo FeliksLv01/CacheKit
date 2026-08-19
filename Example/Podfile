@@ -1,0 +1,24 @@
+source 'https://cdn.cocoapods.org/'
+
+platform :ios, '15.0'
+use_frameworks! :linkage => :static
+
+target 'CacheKitExample' do
+  pod 'CacheKit', path: '..'
+  pod 'Cache', '6.0.0'
+  pod 'YYCache', '1.0.4'
+
+  target 'CacheKitExampleTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |configuration|
+      configuration.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      configuration.build_settings['ONLY_ACTIVE_ARCH'] = 'NO'
+      configuration.build_settings['ENABLE_TESTABILITY'] = 'YES' if target.name == 'CacheKit'
+    end
+  end
+end

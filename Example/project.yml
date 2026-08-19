@@ -1,0 +1,54 @@
+name: CacheKitExample
+
+options:
+  bundleIdPrefix: dev.cachekit
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    ONLY_ACTIVE_ARCH: NO
+
+targets:
+  CacheKitExample:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.cachekit.example
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
+
+  CacheKitExampleTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - BenchmarkTests
+      - path: ../Tests
+    dependencies:
+      - target: CacheKitExample
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.cachekit.example.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/CacheKitExample.app/CacheKitExample
+        BUNDLE_LOADER: $(TEST_HOST)
+        CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
+
+schemes:
+  CacheKitExample:
+    build:
+      targets:
+        CacheKitExample: all
+        CacheKitExampleTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Release
+      targets:
+        - CacheKitExampleTests
