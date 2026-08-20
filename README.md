@@ -107,27 +107,37 @@ bundle exec pod install
 xcodebuild -workspace CacheKitExample.xcworkspace \
   -scheme CacheKitExample \
   -configuration Release \
-  -destination 'platform=iOS Simulator,name=iPhone 17' test | xcbeautify
+  -destination 'platform=iOS,id=YOUR_DEVICE_UDID' \
+  DEVELOPMENT_TEAM=YOUR_TEAM_ID \
+  CODE_SIGN_STYLE=Automatic \
+  test | xcbeautify
 ```
 
-The project, app target, library tests, benchmark tests, shared scheme, Release test
-configuration, and signing-independent simulator settings all come from `project.yml`.
+The project, app target, library tests, benchmark tests, shared scheme, and Release test
+configuration all come from `project.yml`.
 
 ### Existing baseline
 
-The following measurements are the existing baseline from an Apple Silicon Mac and an
-iPhone 17 simulator. Memory tests perform 100,000 operations with 256-byte values. Disk
-tests perform 1,000 operations with 1 KB inline values. Memory keys are pre-generated
-before measurement and use the same input set for every compared implementation.
+The following measurements are from a Release build running arm64 on a physical iPhone 12
+(`iPhone13,2`) with iOS 26.5.2 and Xcode 26.6. Memory tests perform 100,000 operations
+with 256-byte values. Disk tests perform 1,000 operations with 1 KB inline values. Memory
+keys are pre-generated before measurement and use the same input set for every compared
+implementation.
 
 | Scenario | CacheKit | YYCache 1.0.4 | Cache 6.0.0 |
 | --- | ---: | ---: | ---: |
-| Memory read | 0.012s | 0.015s | 0.031s |
-| Memory write | 0.036s | 0.035s | 0.082s |
-| Disk read | 0.012s | 0.014s | 0.329s |
-| Disk write | 0.050s | 0.041s | 0.326s |
-| Concurrent disk read | 0.061s | 0.068s | 0.207s |
-| Concurrent mixed read/write | 0.059s | 0.075s | 0.324s |
+| Memory read | 0.030s | 0.032s | 0.055s |
+| Memory write | 0.062s | 0.075s | 0.127s |
+| Disk read | 0.014s | 0.023s | 0.185s |
+| Disk write | 0.087s | 0.069s | 0.951s |
+| Concurrent disk read | 0.032s | 0.098s | 0.322s |
+| Concurrent mixed read/write | 0.070s | 0.095s | 0.415s |
+
+| CacheKit scenario | Time |
+| --- | ---: |
+| Batch disk read | 0.010s |
+| Batch disk write | 0.017s |
+| Concurrent external disk read | 0.074s |
 
 These numbers are regression baselines, not guarantees. Re-run them on representative
 devices and workloads before making performance decisions.
@@ -141,9 +151,6 @@ xcodebuild test \
   -scheme CacheKit \
   -destination 'platform=iOS Simulator,name=iPhone 17' | xcbeautify
 ```
-
-Before publishing, replace the `OWNER` placeholder and contributor contact in the
-podspec and README with the final GitHub organization and support address.
 
 ## License
 
