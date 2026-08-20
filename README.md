@@ -17,7 +17,7 @@ Add the package URL in Xcode, or add it to `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/OWNER/CacheKit.git", from: "0.1.0")
+    .package(url: "https://github.com/FeliksLv01/CacheKit.git", from: "0.1.0")
 ]
 ```
 
@@ -26,7 +26,9 @@ Then add `CacheKit` to the target dependencies.
 ### CocoaPods
 
 ```ruby
-pod 'CacheKit', '~> 0.1'
+pod 'CacheKit',
+    git: 'https://github.com/FeliksLv01/CacheKit.git',
+    tag: '0.1.0'
 ```
 
 The runtime library has no third-party dependencies. It links the system SQLite library.
