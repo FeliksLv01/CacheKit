@@ -6,8 +6,8 @@ hybrid, and content-addressed file caches with synchronous and Swift Concurrency
 ## Requirements
 
 - iOS 15.0+
-- Swift 5.9+
-- Xcode 15.0+
+- Swift 6.0+
+- Xcode 16.0+
 
 ## Installation
 
@@ -82,7 +82,7 @@ be protected from eviction with `acquireLease` and `releaseLease`.
 
 ## Design
 
-- Memory LRU uses `os_unfair_lock`, `CFDictionary`, and a doubly linked list.
+- Memory LRU uses `os_unfair_lock`, a Swift dictionary, and a doubly linked list.
 - Disk metadata uses SQLite WAL through CacheKit's focused internal SQLite layer.
 - Disk values support size, count, and expiration limits.
 - Large values are stored externally while small values remain inline in SQLite.
@@ -115,12 +115,13 @@ configuration, and signing-independent simulator settings all come from `project
 
 The following measurements are the existing baseline from an Apple Silicon Mac and an
 iPhone 17 simulator. Memory tests perform 100,000 operations with 256-byte values. Disk
-tests perform 1,000 operations with 1 KB inline values.
+tests perform 1,000 operations with 1 KB inline values. Memory keys are pre-generated
+before measurement and use the same input set for every compared implementation.
 
 | Scenario | CacheKit | YYCache 1.0.4 | Cache 6.0.0 |
 | --- | ---: | ---: | ---: |
-| Memory read | 0.022s | 0.020s | 0.033s |
-| Memory write | 0.028s | 0.028s | 0.089s |
+| Memory read | 0.012s | 0.015s | 0.031s |
+| Memory write | 0.036s | 0.035s | 0.082s |
 | Disk read | 0.012s | 0.014s | 0.329s |
 | Disk write | 0.050s | 0.041s | 0.326s |
 | Concurrent disk read | 0.061s | 0.068s | 0.207s |

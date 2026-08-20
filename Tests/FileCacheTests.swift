@@ -124,13 +124,14 @@ final class FileCacheTests: XCTestCase {
             try await Task.sleep(nanoseconds: 20_000_000)
             try Data("downloaded".utf8).write(to: destinationURL)
         }
+        let asyncCache = fixture.cache.async
 
-        async let first = fixture.cache.async.fileURL(
+        async let first = asyncCache.fileURL(
             for: ["https://cdn.example.com/file"],
             fileExtension: "pdf",
             orLoad: loader
         )
-        async let second = fixture.cache.async.fileURL(
+        async let second = asyncCache.fileURL(
             for: ["https://cdn.example.com/file"],
             fileExtension: "pdf",
             orLoad: loader

@@ -17,7 +17,7 @@ public extension CacheCodec where Value == Data {
     static let data = CacheCodec(encode: { $0 }, decode: { $0 })
 }
 
-public extension CacheCodec where Value: Codable {
+public extension CacheCodec where Value: Codable & Sendable {
     static var codable: CacheCodec<Value> {
         CacheCodec(
             encode: { try JSONEncoder().encode($0) },

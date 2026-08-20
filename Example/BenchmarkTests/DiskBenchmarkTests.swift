@@ -102,12 +102,14 @@ final class DiskBenchmarkTests: XCTestCase {
     func testCacheKitConcurrentInlineDiskRead() throws {
         let fixture = try makeCacheKit()
         defer { fixture.remove() }
+        let cache = fixture.cache
+        let operationCount = operationCount
         for index in 0 ..< operationCount {
-            try fixture.cache.setValue(value, forKey: "key-\(index)")
+            try cache.setValue(value, forKey: "key-\(index)")
         }
         measure {
             DispatchQueue.concurrentPerform(iterations: operationCount * 4) { index in
-                _ = try? fixture.cache.value(forKey: "key-\(index % operationCount)")
+                _ = try? cache.value(forKey: "key-\(index % operationCount)")
             }
         }
     }
@@ -115,12 +117,14 @@ final class DiskBenchmarkTests: XCTestCase {
     func testYYCacheConcurrentInlineDiskRead() throws {
         let fixture = try makeYYCache()
         defer { fixture.remove() }
+        let cache = ThreadSafeBenchmarkBox(fixture.cache)
+        let operationCount = operationCount
         for index in 0 ..< operationCount {
-            fixture.cache.setObject(value as NSData, forKey: "key-\(index)")
+            cache.value.setObject(value as NSData, forKey: "key-\(index)")
         }
         measure {
             DispatchQueue.concurrentPerform(iterations: operationCount * 4) { index in
-                _ = fixture.cache.object(forKey: "key-\(index % operationCount)") as? Data
+                _ = cache.value.object(forKey: "key-\(index % operationCount)") as? Data
             }
         }
     }
@@ -128,12 +132,14 @@ final class DiskBenchmarkTests: XCTestCase {
     func testHyperosloConcurrentDiskRead() throws {
         let fixture = try makeHyperosloCache()
         defer { fixture.remove() }
+        let cache = ThreadSafeBenchmarkBox(fixture.cache)
+        let operationCount = operationCount
         for index in 0 ..< operationCount {
-            try fixture.cache.setObject(value, forKey: "key-\(index)")
+            try cache.value.setObject(value, forKey: "key-\(index)")
         }
         measure {
             DispatchQueue.concurrentPerform(iterations: operationCount * 4) { index in
-                _ = try? fixture.cache.object(forKey: "key-\(index % operationCount)")
+                _ = try? cache.value.object(forKey: "key-\(index % operationCount)")
             }
         }
     }
@@ -141,14 +147,17 @@ final class DiskBenchmarkTests: XCTestCase {
     func testCacheKitConcurrentMixedDiskAccess() throws {
         let fixture = try makeCacheKit()
         defer { fixture.remove() }
-        try seedCacheKit(fixture.cache)
+        let cache = fixture.cache
+        let operationCount = operationCount
+        let value = value
+        try seedCacheKit(cache)
         measure {
             DispatchQueue.concurrentPerform(iterations: operationCount * 4) { index in
                 let key = "key-\(index % operationCount)"
                 if index.isMultiple(of: 10) {
-                    try? fixture.cache.setValue(value, forKey: key)
+                    try? cache.setValue(value, forKey: key)
                 } else {
-                    _ = try? fixture.cache.value(forKey: key)
+                    _ = try? cache.value(forKey: key)
                 }
             }
         }
@@ -157,16 +166,19 @@ final class DiskBenchmarkTests: XCTestCase {
     func testYYCacheConcurrentMixedDiskAccess() throws {
         let fixture = try makeYYCache()
         defer { fixture.remove() }
+        let cache = ThreadSafeBenchmarkBox(fixture.cache)
+        let operationCount = operationCount
+        let value = value
         for index in 0 ..< operationCount {
-            fixture.cache.setObject(value as NSData, forKey: "key-\(index)")
+            cache.value.setObject(value as NSData, forKey: "key-\(index)")
         }
         measure {
             DispatchQueue.concurrentPerform(iterations: operationCount * 4) { index in
                 let key = "key-\(index % operationCount)"
                 if index.isMultiple(of: 10) {
-                    fixture.cache.setObject(value as NSData, forKey: key)
+                    cache.value.setObject(value as NSData, forKey: key)
                 } else {
-                    _ = fixture.cache.object(forKey: key) as? Data
+                    _ = cache.value.object(forKey: key) as? Data
                 }
             }
         }
@@ -175,16 +187,19 @@ final class DiskBenchmarkTests: XCTestCase {
     func testHyperosloConcurrentMixedDiskAccess() throws {
         let fixture = try makeHyperosloCache()
         defer { fixture.remove() }
+        let cache = ThreadSafeBenchmarkBox(fixture.cache)
+        let operationCount = operationCount
+        let value = value
         for index in 0 ..< operationCount {
-            try fixture.cache.setObject(value, forKey: "key-\(index)")
+            try cache.value.setObject(value, forKey: "key-\(index)")
         }
         measure {
             DispatchQueue.concurrentPerform(iterations: operationCount * 4) { index in
                 let key = "key-\(index % operationCount)"
                 if index.isMultiple(of: 10) {
-                    try? fixture.cache.setObject(value, forKey: key)
+                    try? cache.value.setObject(value, forKey: key)
                 } else {
-                    _ = try? fixture.cache.object(forKey: key)
+                    _ = try? cache.value.object(forKey: key)
                 }
             }
         }
@@ -193,13 +208,14 @@ final class DiskBenchmarkTests: XCTestCase {
     func testCacheKitConcurrentExternalDiskRead() throws {
         let fixture = try makeCacheKit(inlineValueThreshold: 1_024)
         defer { fixture.remove() }
+        let cache = fixture.cache
         let externalValue = Data(repeating: 0x5a, count: 64 * 1_024)
         for index in 0 ..< 200 {
-            try fixture.cache.setValue(externalValue, forKey: "key-\(index)")
+            try cache.setValue(externalValue, forKey: "key-\(index)")
         }
         measure {
             DispatchQueue.concurrentPerform(iterations: 2_000) { index in
-                _ = try? fixture.cache.value(forKey: "key-\(index % 200)")
+                _ = try? cache.value(forKey: "key-\(index % 200)")
             }
         }
     }
@@ -290,5 +306,14 @@ final class DiskBenchmarkTests: XCTestCase {
                 try? FileManager.default.removeItem(at: rootURL)
             }
         }
+    }
+}
+
+// NOTE: Used only for benchmark cache types whose APIs are exercised concurrently by design.
+private final class ThreadSafeBenchmarkBox<Value>: @unchecked Sendable {
+    let value: Value
+
+    init(_ value: Value) {
+        self.value = value
     }
 }

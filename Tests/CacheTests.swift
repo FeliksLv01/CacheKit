@@ -14,6 +14,20 @@ final class CacheTests: XCTestCase {
         XCTAssertNotNil(try fixture.cache.value(forKey: "three"))
     }
 
+    func testMemoryStorageUsesCostLimitAndReplacementCost() {
+        let cache = MemoryStorage<Data>(countLimit: 0, costLimit: 3)
+        cache.setValue(Data("one".utf8), forKey: "one", cost: 2)
+        cache.setValue(Data("updated".utf8), forKey: "one", cost: 1)
+        cache.setValue(Data("two".utf8), forKey: "two", cost: 2)
+
+        XCTAssertEqual(cache.count, 2)
+        cache.setValue(Data("three".utf8), forKey: "three", cost: 1)
+
+        XCTAssertNil(cache.value(forKey: "one"))
+        XCTAssertEqual(cache.value(forKey: "two"), Data("two".utf8))
+        XCTAssertEqual(cache.value(forKey: "three"), Data("three".utf8))
+    }
+
     func testHybridCacheHydratesMemoryFromDisk() throws {
         let fixture = try Fixture(mode: .hybrid)
         try fixture.cache.setValue(Data("value".utf8), forKey: "key")
@@ -157,9 +171,10 @@ final class CacheTests: XCTestCase {
             try await Task.sleep(nanoseconds: 20_000_000)
             return Data("loaded".utf8)
         }
+        let asyncCache = fixture.cache.async
 
-        async let first = fixture.cache.async.value(forKey: "same", orLoad: loader)
-        async let second = fixture.cache.async.value(forKey: "same", orLoad: loader)
+        async let first = asyncCache.value(forKey: "same", orLoad: loader)
+        async let second = asyncCache.value(forKey: "same", orLoad: loader)
         let values = try await (first, second)
         let invocationCount = await counter.value
 
@@ -182,10 +197,11 @@ final class CacheTests: XCTestCase {
 
     func testAsyncDiskStorageSupportsConcurrentAccess() async throws {
         let fixture = try Fixture(mode: .disk)
+        let asyncCache = fixture.cache.async
         try await withThrowingTaskGroup(of: Void.self) { group in
             for index in 0 ..< 200 {
                 group.addTask {
-                    try await fixture.cache.async.setValue(Data("value-\(index)".utf8), forKey: "key-\(index)")
+                    try await asyncCache.setValue(Data("value-\(index)".utf8), forKey: "key-\(index)")
                 }
             }
             try await group.waitForAll()
@@ -211,18 +227,19 @@ final class CacheTests: XCTestCase {
         let initialValue = Data(repeating: 1, count: 1_024)
         try fixture.cache.setValue(initialValue, forKey: "key")
         let failureCount = LockedCounter()
+        let cache = fixture.cache
 
         DispatchQueue.concurrentPerform(iterations: 500) { index in
             if index.isMultiple(of: 2) {
                 let byte = UInt8(index % 251 + 1)
                 do {
-                    try fixture.cache.setValue(Data(repeating: byte, count: 1_024), forKey: "key")
+                    try cache.setValue(Data(repeating: byte, count: 1_024), forKey: "key")
                 } catch {
                     failureCount.increment()
                 }
             } else {
                 do {
-                    guard let value = try fixture.cache.value(forKey: "key"),
+                    guard let value = try cache.value(forKey: "key"),
                           value.count == 1_024,
                           value.allSatisfy({ $0 == value[0] })
                     else {

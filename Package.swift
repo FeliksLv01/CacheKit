@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 
 import PackageDescription
 
@@ -12,13 +12,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "CacheKitObjC",
-            path: "Sources/CacheKitObjC",
-            publicHeadersPath: "include"
-        ),
-        .target(
             name: "CacheKit",
-            dependencies: ["CacheKitObjC"],
             path: "Sources/CacheKit",
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
@@ -27,5 +21,6 @@ let package = Package(
             dependencies: ["CacheKit"],
             path: "Tests"
         ),
-    ]
+    ],
+    swiftLanguageModes: [.v6]
 )

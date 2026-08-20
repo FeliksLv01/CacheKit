@@ -381,8 +381,8 @@ final class DiskStorage: @unchecked Sendable {
                 try fileManager.moveItem(at: dataDirectoryURL, to: trashURL)
             }
             try fileManager.createDirectory(at: dataDirectoryURL, withIntermediateDirectories: true)
-            maintenanceQueue.async { [fileManager] in
-                try? fileManager.removeItem(at: trashURL)
+            maintenanceQueue.async { [weak self] in
+                try? self?.fileManager.removeItem(at: trashURL)
             }
         }
     }
@@ -721,8 +721,8 @@ final class DiskStorage: @unchecked Sendable {
             try? fileManager.removeItem(at: fileURL)
             return
         }
-        maintenanceQueue.async { [fileManager] in
-            try? fileManager.removeItem(at: trashURL)
+        maintenanceQueue.async { [weak self] in
+            try? self?.fileManager.removeItem(at: trashURL)
         }
     }
 

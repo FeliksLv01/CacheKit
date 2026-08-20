@@ -6,17 +6,14 @@ Pod::Spec.new do |spec|
     CacheKit provides synchronous and async memory, disk, hybrid, and file caches,
     with LRU eviction, expiration, batching, deduplication, and single-flight loading.
   DESC
-  spec.homepage = 'https://github.com/OWNER/CacheKit'
+  spec.homepage = 'https://github.com/FeliksLv01/CacheKit'
   spec.license = { type: 'MIT', file: 'LICENSE' }
-  spec.authors = { 'CacheKit Contributors' => 'opensource@example.com' }
-  spec.source = { git: 'https://github.com/OWNER/CacheKit.git', tag: spec.version.to_s }
+  spec.authors = { 'FeliksLv' => 'felikslv@163.com' }
+  spec.source = { git: 'https://github.com/FeliksLv01/CacheKit.git', tag: spec.version.to_s }
 
   spec.ios.deployment_target = '15.0'
-  spec.swift_version = '5.9'
-  spec.source_files = [
-    'Sources/CacheKit/**/*.swift',
-    'Sources/CacheKitObjC/**/*.{h,m}',
-  ]
+  spec.swift_version = '6.0'
+  spec.source_files = 'Sources/CacheKit/**/*.swift'
   spec.libraries = 'sqlite3'
 
   spec.test_spec 'Tests' do |tests|
