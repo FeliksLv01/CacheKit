@@ -5,11 +5,7 @@ final class FileCacheTests: XCTestCase {
     func testAliasesResolveSameImportedFile() async throws {
         let fixture = try Fixture(maximumSize: 100, maximumFileCount: 10)
         let sourceURL = try fixture.makeFile(name: "source.txt", contents: "hello")
-        let cachedURL = try await fixture.cache.async.importFile(
-            from: sourceURL,
-            keys: ["local"],
-            fileExtension: "txt"
-        )
+        let cachedURL = try await fixture.cache.async.storeFile(at: sourceURL, forKey: "local")
 
         let boundURL = try await fixture.cache.async.bind(
             keys: ["server", "https://cdn.example.com/file"],
@@ -17,8 +13,8 @@ final class FileCacheTests: XCTestCase {
         )
 
         XCTAssertEqual(boundURL, cachedURL)
-        let serverURL = try await fixture.cache.async.fileURL(for: ["server"])
-        let remoteURL = try await fixture.cache.async.fileURL(for: ["https://cdn.example.com/file"])
+        let serverURL = try await fixture.cache.async.fileURL(forKey: "server")
+        let remoteURL = try await fixture.cache.async.fileURL(forKey: "https://cdn.example.com/file")
         XCTAssertEqual(serverURL, cachedURL)
         XCTAssertEqual(remoteURL, cachedURL)
     }
@@ -29,17 +25,17 @@ final class FileCacheTests: XCTestCase {
 
         for index in 1 ... 2 {
             let sourceURL = try fixture.makeFile(name: "\(index).txt", contents: "\(index)")
-            _ = try await fixture.cache.async.importFile(from: sourceURL, keys: ["\(index)"], fileExtension: "txt")
+            _ = try await fixture.cache.async.storeFile(at: sourceURL, forKey: "\(index)")
             clock.advance(by: 1)
         }
-        _ = try await fixture.cache.async.fileURL(for: ["1"])
+        _ = try await fixture.cache.async.fileURL(forKey: "1")
         clock.advance(by: 1)
         let sourceURL = try fixture.makeFile(name: "3.txt", contents: "3")
-        _ = try await fixture.cache.async.importFile(from: sourceURL, keys: ["3"], fileExtension: "txt")
+        _ = try await fixture.cache.async.storeFile(at: sourceURL, forKey: "3")
 
-        let firstURL = try await fixture.cache.async.fileURL(for: ["1"])
-        let secondURL = try await fixture.cache.async.fileURL(for: ["2"])
-        let thirdURL = try await fixture.cache.async.fileURL(for: ["3"])
+        let firstURL = try await fixture.cache.async.fileURL(forKey: "1")
+        let secondURL = try await fixture.cache.async.fileURL(forKey: "2")
+        let thirdURL = try await fixture.cache.async.fileURL(forKey: "3")
         XCTAssertNotNil(firstURL)
         XCTAssertNil(secondURL)
         XCTAssertNotNil(thirdURL)
@@ -48,30 +44,26 @@ final class FileCacheTests: XCTestCase {
     func testIndexSurvivesCacheRecreation() async throws {
         let fixture = try Fixture(maximumSize: 100, maximumFileCount: 10)
         let sourceURL = try fixture.makeFile(name: "source.pdf", contents: "pdf")
-        let cachedURL = try await fixture.cache.async.importFile(
-            from: sourceURL,
-            keys: ["persisted"],
-            fileExtension: "pdf"
-        )
+        let cachedURL = try await fixture.cache.async.storeFile(at: sourceURL, forKey: "persisted")
 
         let restoredCache = try fixture.makeCache()
-        let restoredURL = try await restoredCache.async.fileURL(for: ["persisted"])
+        let restoredURL = try await restoredCache.async.fileURL(forKey: "persisted")
         XCTAssertEqual(restoredURL, cachedURL)
     }
 
     func testLeasedFileIsNotEvictedUntilLeaseIsReleased() async throws {
         let fixture = try Fixture(maximumSize: 100, maximumFileCount: 1)
         let firstSourceURL = try fixture.makeFile(name: "first.txt", contents: "first")
-        let firstURL = try await fixture.cache.async.importFile(from: firstSourceURL, keys: ["first"], fileExtension: "txt")
+        let firstURL = try await fixture.cache.async.storeFile(at: firstSourceURL, forKey: "first")
         let leaseID = try await fixture.cache.async.acquireLease(for: ["first"])
 
         let secondSourceURL = try fixture.makeFile(name: "second.txt", contents: "second")
-        _ = try await fixture.cache.async.importFile(from: secondSourceURL, keys: ["second"], fileExtension: "txt")
+        _ = try await fixture.cache.async.storeFile(at: secondSourceURL, forKey: "second")
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: firstURL.path))
         guard let leaseID else { return XCTFail("Expected lease") }
         try await fixture.cache.async.releaseLease(leaseID)
-        let releasedURL = try await fixture.cache.async.fileURL(for: ["first"])
+        let releasedURL = try await fixture.cache.async.fileURL(forKey: "first")
         XCTAssertNil(releasedURL)
     }
 
@@ -94,8 +86,8 @@ final class FileCacheTests: XCTestCase {
         let firstSourceURL = try fixture.makeFile(name: "first.txt", contents: "same")
         let secondSourceURL = try fixture.makeFile(name: "second.txt", contents: "same")
 
-        let firstURL = try await fixture.cache.async.importFile(from: firstSourceURL, keys: ["first"], fileExtension: "txt")
-        let secondURL = try await fixture.cache.async.importFile(from: secondSourceURL, keys: ["second"], fileExtension: "txt")
+        let firstURL = try await fixture.cache.async.storeFile(at: firstSourceURL, forKey: "first")
+        let secondURL = try await fixture.cache.async.storeFile(at: secondSourceURL, forKey: "second")
 
         XCTAssertEqual(firstURL, secondURL)
         let children = try FileManager.default.contentsOfDirectory(
@@ -108,7 +100,7 @@ final class FileCacheTests: XCTestCase {
         }
     }
 
-    func testSynchronousAPIImportsAndReadsFile() throws {
+    func testSynchronousAPIStoresAndReadsFile() throws {
         let fixture = try Fixture(maximumSize: 100, maximumFileCount: 10)
         let sourceURL = try fixture.makeFile(name: "sync.txt", contents: "sync")
         let importedURL = try fixture.cache.storeFile(at: sourceURL, forKey: "sync")
@@ -136,14 +128,10 @@ final class FileCacheTests: XCTestCase {
     func testFileWithSizeDifferentFromIndexIsRemoved() async throws {
         let fixture = try Fixture(maximumSize: 100, maximumFileCount: 10)
         let sourceURL = try fixture.makeFile(name: "source.txt", contents: "original")
-        let cachedURL = try await fixture.cache.async.importFile(
-            from: sourceURL,
-            keys: ["file"],
-            fileExtension: "txt"
-        )
+        let cachedURL = try await fixture.cache.async.storeFile(at: sourceURL, forKey: "file")
         try Data("changed-size".utf8).write(to: cachedURL)
 
-        let resolvedURL = try await fixture.cache.async.fileURL(for: ["file"])
+        let resolvedURL = try await fixture.cache.async.fileURL(forKey: "file")
 
         XCTAssertNil(resolvedURL)
         XCTAssertFalse(FileManager.default.fileExists(atPath: cachedURL.path))
