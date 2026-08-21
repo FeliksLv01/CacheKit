@@ -20,7 +20,7 @@ public final class FileCache: @unchecked Sendable {
         let indexStore = try FileCacheIndexStore(directoryURL: configuration.directoryURL)
         let loadedEntries = try indexStore.allEntries()
         let validEntries = loadedEntries.filter { entry in
-            fileStore.isUsableFile(fileStore.fileURL(fileName: entry.fileName), expectedSize: 0)
+            fileStore.isUsableFile(fileStore.fileURL(fileName: entry.fileName), recordedSize: entry.size)
         }
         for invalidEntry in loadedEntries where !validEntries.contains(where: { $0.identifier == invalidEntry.identifier }) {
             try indexStore.remove(identifier: invalidEntry.identifier)
@@ -42,22 +42,28 @@ public final class FileCache: @unchecked Sendable {
         async.bind(cache: self)
     }
 
-    public func fileURL(for keys: [String], expectedSize: Int64 = 0) throws -> URL? {
+    public func fileURL(for keys: [String]) throws -> URL? {
         try queue.sync {
-            try fileURLUnlocked(for: keys, expectedSize: expectedSize)
+            try fileURLUnlocked(for: keys)
         }
     }
 
-    public func destinationURL(primaryKey: String, fileExtension: String) throws -> URL {
-        try queue.sync {
-            try destinationURLUnlocked(primaryKey: primaryKey, fileExtension: fileExtension)
-        }
+    public func fileURL(forKey key: String) throws -> URL? {
+        try fileURL(for: [key])
     }
 
     @discardableResult
-    public func commitFile(at url: URL, keys: [String], expectedSize: Int64 = 0) throws -> URL {
-        try queue.sync {
-            try commitFileUnlocked(at: url, keys: keys, expectedSize: expectedSize)
+    public func storeFile(at sourceURL: URL, forKey key: String) throws -> URL {
+        guard !key.isEmpty else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        return try queue.sync {
+            try importFileUnlocked(
+                from: sourceURL,
+                keys: [key],
+                fileExtension: sourceURL.pathExtension,
+                moveSource: true
+            )
         }
     }
 
@@ -93,59 +99,18 @@ public final class FileCache: @unchecked Sendable {
         }
     }
 
-    private func fileURLUnlocked(for keys: [String], expectedSize: Int64) throws -> URL? {
+    private func fileURLUnlocked(for keys: [String]) throws -> URL? {
         let normalizedKeys = Set(keys.filter { !$0.isEmpty })
         guard let entry = try indexStore.entry(forAny: normalizedKeys) else {
             return nil
         }
         let url = fileStore.fileURL(fileName: entry.fileName)
-        guard fileStore.isUsableFile(url, expectedSize: expectedSize) else {
+        guard fileStore.isUsableFile(url, recordedSize: entry.size) else {
             try removeEntry(entry, removeFile: true)
             return nil
         }
         try indexStore.touch(identifier: entry.identifier, keys: normalizedKeys, at: now().timeIntervalSince1970)
         return url
-    }
-
-    private func destinationURLUnlocked(primaryKey: String, fileExtension: String) throws -> URL {
-        try fileStore.prepare()
-        guard !primaryKey.isEmpty else {
-            throw CocoaError(.fileWriteInvalidFileName)
-        }
-        if let entry = try indexStore.entry(forAny: [primaryKey]) {
-            return fileStore.fileURL(fileName: entry.fileName)
-        }
-        return fileStore.destinationURL(
-            identifier: FileCacheFileStore.identifier(for: primaryKey),
-            fileExtension: fileExtension
-        ).appendingPathExtension("cachekitdownload")
-    }
-
-    private func commitFileUnlocked(at url: URL, keys: [String], expectedSize: Int64) throws -> URL {
-        guard fileStore.isRegularFile(url, expectedSize: expectedSize) else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        try fileStore.prepare()
-        let normalizedKeys = Set(keys.filter { !$0.isEmpty })
-        guard let primaryKey = keys.first(where: { !$0.isEmpty }) else {
-            throw CocoaError(.fileWriteInvalidFileName)
-        }
-        let existingEntry = try indexStore.entry(forAny: normalizedKeys)
-        let identifier = existingEntry?.identifier ?? FileCacheFileStore.identifier(for: primaryKey)
-        let sourceExtension = url.pathExtension == "cachekitdownload" ? url.deletingPathExtension().pathExtension : url.pathExtension
-        let targetURL = fileStore.destinationURL(identifier: identifier, fileExtension: sourceExtension)
-        try fileStore.placeFile(from: url, at: targetURL, moveSource: true)
-
-        let size = try fileStore.fileSize(at: targetURL)
-        let entry = FileCacheEntry(
-            identifier: identifier,
-            fileName: targetURL.lastPathComponent,
-            size: size,
-            lastAccessTime: now().timeIntervalSince1970
-        )
-        try indexStore.upsert(entry: entry, keys: normalizedKeys)
-        try evict(protectedIdentifiers: [identifier])
-        return targetURL
     }
 
     private func importFileUnlocked(
@@ -154,14 +119,14 @@ public final class FileCache: @unchecked Sendable {
         fileExtension: String,
         moveSource: Bool
     ) throws -> URL {
-        guard fileStore.isUsableFile(sourceURL, expectedSize: 0) else {
+        guard fileStore.isUsableFile(sourceURL) else {
             throw CocoaError(.fileReadNoSuchFile)
         }
         try fileStore.prepare()
         let contentKey = try fileStore.contentIdentifier(at: sourceURL)
         var normalizedKeys = Set(keys.filter { !$0.isEmpty })
         normalizedKeys.insert(contentKey)
-        if let cachedURL = try fileURLUnlocked(for: Array(normalizedKeys), expectedSize: 0) {
+        if let cachedURL = try fileURLUnlocked(for: Array(normalizedKeys)) {
             if moveSource, sourceURL.standardizedFileURL != cachedURL.standardizedFileURL {
                 fileStore.removeFile(at: sourceURL)
             }
@@ -191,7 +156,7 @@ public final class FileCache: @unchecked Sendable {
             return nil
         }
         let url = fileStore.fileURL(fileName: entry.fileName)
-        guard fileStore.isUsableFile(url, expectedSize: 0) else {
+        guard fileStore.isUsableFile(url, recordedSize: entry.size) else {
             try removeEntry(entry, removeFile: true)
             return nil
         }
@@ -200,7 +165,7 @@ public final class FileCache: @unchecked Sendable {
 
     private func acquireLeaseUnlocked(for keys: [String]) throws -> UUID? {
         guard let entry = try indexStore.entry(forAny: Set(keys.filter { !$0.isEmpty })),
-              fileStore.isUsableFile(fileStore.fileURL(fileName: entry.fileName), expectedSize: 0) else {
+              fileStore.isUsableFile(fileStore.fileURL(fileName: entry.fileName), recordedSize: entry.size) else {
             return nil
         }
         let leaseID = UUID()
@@ -224,17 +189,11 @@ public final class FileCache: @unchecked Sendable {
         }
     }
 
-    fileprivate func discardFile(at url: URL) {
-        queue.sync {
-            fileStore.removeFile(at: url)
-        }
-    }
 }
 
 public final class FileCacheAsync: @unchecked Sendable {
     private weak var cache: FileCache?
     private let queue = DispatchQueue(label: "com.cachekit.file.async", qos: .userInitiated, attributes: .concurrent)
-    private let loadCoordinator = LoadCoordinator<URL>()
 
     fileprivate init() {}
 
@@ -242,17 +201,17 @@ public final class FileCacheAsync: @unchecked Sendable {
         self.cache = cache
     }
 
-    public func fileURL(for keys: [String], expectedSize: Int64 = 0) async throws -> URL? {
-        try await perform { try $0.fileURL(for: keys, expectedSize: expectedSize) }
+    public func fileURL(for keys: [String]) async throws -> URL? {
+        try await perform { try $0.fileURL(for: keys) }
     }
 
-    public func destinationURL(primaryKey: String, fileExtension: String) async throws -> URL {
-        try await perform { try $0.destinationURL(primaryKey: primaryKey, fileExtension: fileExtension) }
+    public func fileURL(forKey key: String) async throws -> URL? {
+        try await perform { try $0.fileURL(forKey: key) }
     }
 
     @discardableResult
-    public func commitFile(at url: URL, keys: [String], expectedSize: Int64 = 0) async throws -> URL {
-        try await perform { try $0.commitFile(at: url, keys: keys, expectedSize: expectedSize) }
+    public func storeFile(at sourceURL: URL, forKey key: String) async throws -> URL {
+        try await perform { try $0.storeFile(at: sourceURL, forKey: key) }
     }
 
     @discardableResult
@@ -278,34 +237,6 @@ public final class FileCacheAsync: @unchecked Sendable {
 
     public func releaseLease(_ leaseID: UUID) async throws {
         try await perform { try $0.releaseLease(leaseID) }
-    }
-
-    public func fileURL(
-        for keys: [String],
-        fileExtension: String,
-        expectedSize: Int64 = 0,
-        orLoad loader: @escaping @Sendable (URL) async throws -> Void
-    ) async throws -> URL {
-        if let cachedURL = try await fileURL(for: keys, expectedSize: expectedSize) {
-            return cachedURL
-        }
-        guard let primaryKey = keys.first(where: { !$0.isEmpty }) else {
-            throw CocoaError(.fileWriteInvalidFileName)
-        }
-        return try await loadCoordinator.value(forKey: primaryKey) { [weak cache] in
-            guard let cache else { throw CacheError.deallocated }
-            if let cachedURL = try cache.fileURL(for: keys, expectedSize: expectedSize) {
-                return cachedURL
-            }
-            let destinationURL = try cache.destinationURL(primaryKey: primaryKey, fileExtension: fileExtension)
-            do {
-                try await loader(destinationURL)
-                return try cache.commitFile(at: destinationURL, keys: keys, expectedSize: expectedSize)
-            } catch {
-                cache.discardFile(at: destinationURL)
-                throw error
-            }
-        }
     }
 
     private func perform<Result: Sendable>(

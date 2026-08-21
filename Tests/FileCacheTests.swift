@@ -111,49 +111,44 @@ final class FileCacheTests: XCTestCase {
     func testSynchronousAPIImportsAndReadsFile() throws {
         let fixture = try Fixture(maximumSize: 100, maximumFileCount: 10)
         let sourceURL = try fixture.makeFile(name: "sync.txt", contents: "sync")
-        let importedURL = try fixture.cache.importFile(from: sourceURL, keys: ["sync"], fileExtension: "txt")
+        let importedURL = try fixture.cache.storeFile(at: sourceURL, forKey: "sync")
 
-        XCTAssertEqual(try fixture.cache.fileURL(for: ["sync"]), importedURL)
+        XCTAssertEqual(try fixture.cache.fileURL(forKey: "sync"), importedURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sourceURL.path))
     }
 
-    func testAsyncLoaderDownloadsSameKeyOnce() async throws {
+    func testStoreFileMovesDownloadedFileIntoCacheDirectory() async throws {
         let fixture = try Fixture(maximumSize: 100, maximumFileCount: 10)
-        let counter = InvocationCounter()
-        let loader: @Sendable (URL) async throws -> Void = { destinationURL in
-            await counter.increment()
-            try await Task.sleep(nanoseconds: 20_000_000)
-            try Data("downloaded".utf8).write(to: destinationURL)
-        }
-        let asyncCache = fixture.cache.async
+        let downloadedURL = try fixture.makeFile(name: "downloaded.pdf", contents: "downloaded")
 
-        async let first = asyncCache.fileURL(
-            for: ["https://cdn.example.com/file"],
-            fileExtension: "pdf",
-            orLoad: loader
+        let cachedURL = try await fixture.cache.async.storeFile(
+            at: downloadedURL,
+            forKey: "https://cdn.example.com/file"
         )
-        async let second = asyncCache.fileURL(
-            for: ["https://cdn.example.com/file"],
-            fileExtension: "pdf",
-            orLoad: loader
-        )
-        let urls = try await (first, second)
-        let invocationCount = await counter.value
 
-        XCTAssertEqual(urls.0, urls.1)
-        XCTAssertEqual(urls.0.pathExtension, "pdf")
-        XCTAssertEqual(invocationCount, 1)
+        XCTAssertEqual(cachedURL.deletingLastPathComponent().path, fixture.configuration.directoryURL.path)
+        XCTAssertEqual(cachedURL.pathExtension, "pdf")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: downloadedURL.path))
+        let resolvedURL = try await fixture.cache.async.fileURL(forKey: "https://cdn.example.com/file")
+        XCTAssertEqual(resolvedURL, cachedURL)
     }
 
-    func testFileExtensionCannotCreateNestedPath() throws {
+    func testFileWithSizeDifferentFromIndexIsRemoved() async throws {
         let fixture = try Fixture(maximumSize: 100, maximumFileCount: 10)
-        let destinationURL = try fixture.cache.destinationURL(
-            primaryKey: "safe",
-            fileExtension: "../../PDF"
+        let sourceURL = try fixture.makeFile(name: "source.txt", contents: "original")
+        let cachedURL = try await fixture.cache.async.importFile(
+            from: sourceURL,
+            keys: ["file"],
+            fileExtension: "txt"
         )
+        try Data("changed-size".utf8).write(to: cachedURL)
 
-        XCTAssertEqual(destinationURL.deletingLastPathComponent().path, fixture.configuration.directoryURL.path)
-        XCTAssertTrue(destinationURL.lastPathComponent.hasSuffix(".pdf.cachekitdownload"))
+        let resolvedURL = try await fixture.cache.async.fileURL(for: ["file"])
+
+        XCTAssertNil(resolvedURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cachedURL.path))
     }
+
 }
 
 private final class Fixture {

@@ -22,20 +22,18 @@ final class FileCacheFileStore {
         fileURL(fileName: fileName(identifier: identifier, fileExtension: fileExtension))
     }
 
-    func isUsableFile(_ url: URL, expectedSize: Int64) -> Bool {
-        guard !url.lastPathComponent.hasSuffix(".cachekitdownload") else {
-            return false
-        }
-        return isRegularFile(url, expectedSize: expectedSize)
+    func isUsableFile(_ url: URL, recordedSize: Int64? = nil) -> Bool {
+        guard isRegularFile(url) else { return false }
+        guard let recordedSize else { return true }
+        return (try? fileSize(at: url)) == recordedSize
     }
 
-    func isRegularFile(_ url: URL, expectedSize: Int64) -> Bool {
-        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+    func isRegularFile(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey]),
               values.isRegularFile == true else {
             return false
         }
-        guard expectedSize > 0 else { return true }
-        return Int64(values.fileSize ?? 0) >= expectedSize
+        return true
     }
 
     func fileSize(at url: URL) throws -> Int64 {

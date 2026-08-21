@@ -65,18 +65,14 @@ let fileCache = try FileCache(
     configuration: FileCacheConfiguration(directoryURL: root.appendingPathComponent("files"))
 )
 
-let cachedURL = try fileCache.importFile(
-    from: sourceURL,
-    keys: ["local-id", "remote-id"],
-    fileExtension: "pdf"
+let key = remoteURL.absoluteString
+let downloadedURL = try await download(remoteURL)
+let cachedURL = try await fileCache.async.storeFile(
+    at: downloadedURL,
+    forKey: key
 )
 
-let downloadedURL = try await fileCache.async.fileURL(
-    for: [remoteURL.absoluteString],
-    fileExtension: "pdf"
-) { destinationURL in
-    try await download(remoteURL, to: destinationURL)
-}
+let existingURL = try await fileCache.async.fileURL(forKey: key)
 ```
 
 Files can have multiple aliases, are deduplicated by SHA-256 content hashes, and can
